@@ -290,4 +290,63 @@ describe('UniFi DDNS Worker', () => {
 		expect(response.status).toBe(422);
 		expect(await response.text()).toBe('The "ip6" parameter must be a valid IPv6 address.');
 	});
+	describe('failure logging', () => {
+		const auth = { Authorization: 'Basic ' + btoa('email@example.com:validtoken') };
+
+		beforeEach(() => {
+			// Drop any queued once-implementations left over from earlier tests.
+			for (const mock of [mockVerify, mockListZones, mockListRecords, mockUpdateRecord]) {
+				mock.mockReset();
+			}
+		});
+
+		it('logs a structured error without credentials on client errors', async () => {
+			const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+			mockVerify.mockResolvedValueOnce({ status: 'active' });
+			mockListZones.mockResolvedValueOnce({ result: [] });
+
+			const response = await worker.fetch(
+				new Request('http://example.com/update?ip=192.0.2.1&hostname=home.example.com', { headers: auth }),
+			);
+
+			expect(response.status).toBe(400);
+			expect(errorSpy).toHaveBeenCalledTimes(1);
+			const entry = errorSpy.mock.calls[0][0];
+			expect(entry).toMatchObject({
+				message: 'DDNS update failed',
+				responseStatus: 400,
+				hostname: 'home.example.com',
+				ip: '192.0.2.1',
+				error: { name: 'HttpError', message: 'No zones found! You must supply an API Token scoped to a single zone.' },
+			});
+			expect(JSON.stringify(entry)).not.toContain('validtoken');
+			errorSpy.mockRestore();
+		});
+
+		it('logs Cloudflare API status and errors on SDK failures', async () => {
+			const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+			const apiError = Object.assign(new Error('403 Authentication error'), {
+				name: 'PermissionDeniedError',
+				status: 403,
+				errors: [{ code: 10000, message: 'Authentication error' }],
+			});
+			mockVerify.mockRejectedValueOnce(apiError);
+
+			const response = await worker.fetch(
+				new Request('http://example.com/update?ip=192.0.2.1&hostname=home.example.com', { headers: auth }),
+			);
+
+			expect(response.status).toBe(500);
+			expect(await response.text()).toBe('Internal Server Error');
+			expect(errorSpy.mock.calls[0][0]).toMatchObject({
+				responseStatus: 500,
+				error: {
+					name: 'PermissionDeniedError',
+					apiStatus: 403,
+					apiErrors: [{ code: 10000, message: 'Authentication error' }],
+				},
+			});
+			errorSpy.mockRestore();
+		});
+	});
 });

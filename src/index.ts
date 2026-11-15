@@ -1,5 +1,5 @@
 import { ClientOptions, Cloudflare } from 'cloudflare';
-import { AAAARecord, ARecord } from 'cloudflare/src/resources/dns/records.js';
+import type { AAAARecord, ARecord } from 'cloudflare/resources/dns/records';
 type AddressableRecord = AAAARecord | ARecord;
 
 class HttpError extends Error {
@@ -151,12 +151,62 @@ export default {
 			return await update(clientOptions, records);
 		} catch (error) {
 			if (error instanceof HttpError) {
-				console.log('Error updating DNS record: ' + error.message);
+				logFailure(request, error.statusCode, error);
 				return new Response(error.message, { status: error.statusCode });
 			} else {
-				console.log('Error updating DNS record: ' + error);
+				logFailure(request, 500, error);
 				return new Response('Internal Server Error', { status: 500 });
 			}
 		}
 	},
 } satisfies ExportedHandler<Env>;
+
+/**
+ * Shape of errors thrown by the Cloudflare SDK (`APIError` and subclasses).
+ * Duck-typed so it works without importing the SDK's error classes.
+ */
+interface CloudflareApiErrorLike extends Error {
+	status: number | undefined;
+	errors: unknown;
+}
+
+function isCloudflareApiError(error: unknown): error is CloudflareApiErrorLike {
+	return error instanceof Error && 'status' in error && 'errors' in error;
+}
+
+/**
+ * Emit a structured error log for a failed request. Never logs the
+ * Authorization header or decoded credentials.
+ */
+function logFailure(request: Request, responseStatus: number, error: unknown): void {
+	const url = new URL(request.url);
+	const entry: Record<string, unknown> = {
+		message: 'DDNS update failed',
+		responseStatus,
+		method: request.method,
+		path: url.pathname,
+		hostname: url.searchParams.get('hostname'),
+		ip: url.searchParams.get('ip') ?? url.searchParams.get('myip'),
+		ip6: url.searchParams.get('ip6'),
+		clientIp: request.headers.get('CF-Connecting-IP'),
+		userAgent: request.headers.get('User-Agent'),
+	};
+
+	if (error instanceof HttpError) {
+		entry.error = { name: error.name, message: error.message };
+	} else if (isCloudflareApiError(error)) {
+		entry.error = {
+			name: error.name,
+			message: error.message,
+			apiStatus: error.status,
+			apiErrors: error.errors,
+			stack: error.stack,
+		};
+	} else if (error instanceof Error) {
+		entry.error = { name: error.name, message: error.message, stack: error.stack };
+	} else {
+		entry.error = { message: String(error) };
+	}
+
+	console.error(entry);
+}
