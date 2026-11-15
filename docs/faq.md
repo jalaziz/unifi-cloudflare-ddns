@@ -24,7 +24,7 @@ This distinction is crucial to ensure the DDNS updates function correctly.
 2. **Create New Dynamic DNS Entry:**
    - **Service:** Select `custom`.
    - **Hostname:** Enter your desired hostname (e.g., `subdomain.example.com`).
-   - **Username:** Enter your Cloudflare account email.
+   - **Username:** Enter any non-empty value (e.g. your Cloudflare email); the worker ignores it.
    - **Password:** Enter your Cloudflare API token.
    - **Server:** Enter the appropriate server address based on your device model (see FAQ #1).
 
@@ -93,11 +93,11 @@ You need **two** API tokens with different scopes:
 - Zone — Zone: Read
 - Zone — DNS: Edit
 
-**DDNS Update Token** (used as the password in UniFi DDNS settings):
+**DDNS Update Token** (used as the password in UniFi DDNS settings; Account or User token):
 - Zone — Zone: Read
 - Zone — DNS: Edit
 
-The DDNS update token can be scoped to one or more zones (domains). When it covers several zones, the worker picks the zone whose name is the longest suffix of each hostname (e.g. `home.example.com` → `example.com`). Scope the token to only the zones you need. This is a User API Token, not an Account API Token.
+The DDNS update token can be scoped to one or more zones (domains). When it covers several zones, the worker picks the zone whose name is the longest suffix of each hostname (e.g. `home.example.com` → `example.com`). Scope the token to only the zones you need. Either an Account API Token (recommended, since it isn't tied to a user) or a User API Token works.
 
 ## 9. How frequently does the UniFi device update the DDNS record?
 
@@ -140,6 +140,7 @@ The Click to Deploy button may fail if your Cloudflare Pages build settings are 
 
 Common error messages and their meanings:
 - **"API token missing"** — The Authorization header is not being sent. Check your UniFi DDNS username/password configuration.
+- **"The API Token is invalid, expired, or lacks Zone:Read permission"** — Cloudflare rejected the token. Check it's active and has Zone — Zone: Read and Zone — DNS: Edit on the right zone(s). The worker log includes Cloudflare's error code.
 - **"No zones found"** — Your API token has no zone access. Create a new token scoped to the zone(s) you want to update.
 - **"No zone found for hostname"** — The token covers several zones, but none of them contains that hostname. Add the hostname's zone to the token.
 - **"No record found"** — The DNS record must already exist in Cloudflare before the worker can update it. Manually create an A or AAAA record first.

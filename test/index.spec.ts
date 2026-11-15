@@ -2,7 +2,6 @@ import worker from '../src/index';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Mock functions
-const mockVerify = vi.fn();
 const mockListZones = vi.fn();
 const mockListRecords = vi.fn();
 const mockUpdateRecord = vi.fn();
@@ -11,11 +10,6 @@ vi.mock('cloudflare', () => {
 	return {
 		Cloudflare: vi.fn().mockImplementation(function () {
 			return {
-				user: {
-					tokens: {
-						verify: mockVerify,
-					},
-				},
 				zones: {
 					// The SDK returns a PagePromise: awaitable for one page, async-iterable across all pages.
 					list: (...args: unknown[]) => {
@@ -62,8 +56,10 @@ describe('UniFi DDNS Worker', () => {
 		expect(await response.text()).toBe('Invalid API key or token.');
 	});
 
-	it('responds with 401 when token is not active', async () => {
-		mockVerify.mockResolvedValueOnce({ status: 'inactive' });
+	it.each([400, 401, 403])('responds with 401 when the API rejects the token (%i)', async (status) => {
+		mockListZones.mockRejectedValueOnce(
+			Object.assign(new Error(`${status} Authentication error`), { status, errors: [{ code: 10000, message: 'Authentication error' }] }),
+		);
 
 		const response = await worker.fetch(new Request('http://example.com/update?ip=192.0.2.1&hostname=home.example.com', {
 			headers: {
@@ -72,11 +68,11 @@ describe('UniFi DDNS Worker', () => {
 		}));
 
 		expect(response.status).toBe(401);
-		expect(await response.text()).toBe('This API Token is inactive');
+		expect(await response.text()).toBe('The API Token is invalid, expired, or lacks Zone:Read permission.');
+		expect(mockListRecords).not.toHaveBeenCalled();
 	});
 
 	it('responds with 422 when IP is missing', async () => {
-		mockVerify.mockResolvedValueOnce({ status: 'active' });
 		const response = await worker.fetch(new Request('http://example.com/update?hostname=home.example.com', {
 			headers: {
 				Authorization: 'Basic ' + btoa('email@example.com:validtoken'),
@@ -87,7 +83,6 @@ describe('UniFi DDNS Worker', () => {
 	});
 
 	it('responds with 500 when IP is set to auto and is missing', async () => {
-		mockVerify.mockResolvedValueOnce({ status: 'active' });
 		const response = await worker.fetch(new Request('http://example.com/update?hostname=home.example.com&ip=auto', {
 			headers: {
 				Authorization: 'Basic ' + btoa('email@example.com:validtoken'),
@@ -98,7 +93,6 @@ describe('UniFi DDNS Worker', () => {
 	});
 
 	it('responds with 422 when hostname is missing', async () => {
-		mockVerify.mockResolvedValueOnce({ status: 'active' });
 		const response = await worker.fetch(new Request('http://example.com/update?ip=192.0.2.1', {
 			headers: {
 				Authorization: 'Basic ' + btoa('email@example.com:validtoken'),
@@ -109,7 +103,6 @@ describe('UniFi DDNS Worker', () => {
 	});
 
 	it('responds with 200 on valid update', async () => {
-		mockVerify.mockResolvedValueOnce({ status: 'active' });
 		mockListZones.mockResolvedValueOnce({ result: [{ id: 'zone-id' }] });
 		mockListRecords.mockResolvedValueOnce({ result: [{ id: 'record-id', name: 'home.example.com', type: 'A' }] });
 		mockUpdateRecord.mockResolvedValueOnce({});
@@ -123,7 +116,6 @@ describe('UniFi DDNS Worker', () => {
 	});
 
 	it('responds with 200 on valid update when IP is set to auto', async () => {
-		mockVerify.mockResolvedValueOnce({ status: 'active' });
 		mockListZones.mockResolvedValueOnce({ result: [{ id: 'zone-id' }] });
 		mockListRecords.mockResolvedValueOnce({ result: [{ id: 'record-id', name: 'home.example.com', type: 'A' }] });
 		mockUpdateRecord.mockResolvedValueOnce({});
@@ -138,7 +130,6 @@ describe('UniFi DDNS Worker', () => {
 	});
 
 	it('responds with 200 on valid multi-hostname update', async () => {
-		mockVerify.mockResolvedValueOnce({ status: 'active' });
 		mockListZones.mockResolvedValueOnce({ result: [{ id: 'zone-id' }] });
 		mockListRecords
 			.mockResolvedValueOnce({ result: [{ id: 'record-id-1', name: 'example.com', type: 'A' }] })
@@ -157,7 +148,6 @@ describe('UniFi DDNS Worker', () => {
 	});
 
 	it('responds with 200 on multi-hostname dual-stack update', async () => {
-		mockVerify.mockResolvedValueOnce({ status: 'active' });
 		mockListZones.mockResolvedValueOnce({ result: [{ id: 'zone-id' }] });
 		mockListRecords
 			.mockResolvedValueOnce({ result: [{ id: 'record-id-a1', name: 'example.com', type: 'A' }] })
@@ -178,7 +168,6 @@ describe('UniFi DDNS Worker', () => {
 	});
 
 	it('routes each hostname to its matching zone when the token covers multiple zones', async () => {
-		mockVerify.mockResolvedValueOnce({ status: 'active' });
 		mockListZones.mockResolvedValueOnce({
 			result: [
 				{ id: 'zone-example', name: 'example.com' },
@@ -206,7 +195,6 @@ describe('UniFi DDNS Worker', () => {
 	});
 
 	it('responds with 400 when no accessible zone matches the hostname', async () => {
-		mockVerify.mockResolvedValueOnce({ status: 'active' });
 		mockListZones.mockResolvedValueOnce({
 			result: [
 				{ id: 'zone-example', name: 'example.com' },
@@ -228,7 +216,6 @@ describe('UniFi DDNS Worker', () => {
 	});
 
 	it('responds with 400 when no zones are found', async () => {
-		mockVerify.mockResolvedValueOnce({ status: 'active' });
 		mockListZones.mockResolvedValueOnce({ result: [] });
 
 		const response = await worker.fetch(new Request('http://example.com/update?ip=192.0.2.1&hostname=home.example.com', {
@@ -242,7 +229,6 @@ describe('UniFi DDNS Worker', () => {
 	});
 
 	it('responds with 400 when multiple records are found', async () => {
-		mockVerify.mockResolvedValueOnce({ status: 'active' });
 		mockListZones.mockResolvedValueOnce({ result: [{ id: 'zone-id' }] });
 		mockListRecords.mockResolvedValueOnce({
 			result: [
@@ -262,7 +248,6 @@ describe('UniFi DDNS Worker', () => {
 	});
 
 	it('responds with 400 when no records are found', async () => {
-		mockVerify.mockResolvedValueOnce({ status: 'active' });
 		mockListZones.mockResolvedValueOnce({ result: [{ id: 'zone-id' }] });
 		mockListRecords.mockResolvedValueOnce({ result: [] });
 
@@ -277,7 +262,7 @@ describe('UniFi DDNS Worker', () => {
 	});
 
 	it('responds with 500 for an unforeseen internal server error', async () => {
-		mockVerify.mockImplementationOnce(() => {
+		mockListZones.mockImplementationOnce(() => {
 			throw new Error('Unexpected Error');
 		});
 
@@ -292,7 +277,6 @@ describe('UniFi DDNS Worker', () => {
 	});
 
 	it('responds with 200 on valid IPv6 update', async () => {
-		mockVerify.mockResolvedValueOnce({ status: 'active' });
 		mockListZones.mockResolvedValueOnce({ result: [{ id: 'zone-id' }] });
 		mockListRecords.mockResolvedValueOnce({ result: [{ id: 'record-id', name: 'home.example.com', type: 'AAAA' }] });
 		mockUpdateRecord.mockResolvedValueOnce({});
@@ -306,7 +290,6 @@ describe('UniFi DDNS Worker', () => {
 	});
 
 	it('responds with 200 on valid dual-stack update with ip6 parameter', async () => {
-		mockVerify.mockResolvedValueOnce({ status: 'active' });
 		mockListZones.mockResolvedValueOnce({ result: [{ id: 'zone-id' }] });
 		mockListRecords
 			.mockResolvedValueOnce({ result: [{ id: 'record-id-a', name: 'home.example.com', type: 'A' }] })
@@ -340,14 +323,13 @@ describe('UniFi DDNS Worker', () => {
 
 		beforeEach(() => {
 			// Drop any queued once-implementations left over from earlier tests.
-			for (const mock of [mockVerify, mockListZones, mockListRecords, mockUpdateRecord]) {
+			for (const mock of [mockListZones, mockListRecords, mockUpdateRecord]) {
 				mock.mockReset();
 			}
 		});
 
 		it('logs a structured error without credentials on client errors', async () => {
 			const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-			mockVerify.mockResolvedValueOnce({ status: 'active' });
 			mockListZones.mockResolvedValueOnce({ result: [] });
 
 			const response = await worker.fetch(
@@ -368,14 +350,43 @@ describe('UniFi DDNS Worker', () => {
 			errorSpy.mockRestore();
 		});
 
-		it('logs Cloudflare API status and errors on SDK failures', async () => {
+		it('logs the underlying Cloudflare API error when the token is rejected', async () => {
 			const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-			const apiError = Object.assign(new Error('403 Authentication error'), {
-				name: 'PermissionDeniedError',
-				status: 403,
-				errors: [{ code: 10000, message: 'Authentication error' }],
+			mockListZones.mockRejectedValueOnce(
+				Object.assign(new Error('403 Authentication error'), {
+					name: 'PermissionDeniedError',
+					status: 403,
+					errors: [{ code: 10000, message: 'Authentication error' }],
+				}),
+			);
+
+			const response = await worker.fetch(
+				new Request('http://example.com/update?ip=192.0.2.1&hostname=home.example.com', { headers: auth }),
+			);
+
+			expect(response.status).toBe(401);
+			expect(errorSpy.mock.calls[0][0]).toMatchObject({
+				responseStatus: 401,
+				error: { name: 'HttpError', message: 'The API Token is invalid, expired, or lacks Zone:Read permission.' },
+				cause: {
+					name: 'PermissionDeniedError',
+					apiStatus: 403,
+					apiErrors: [{ code: 10000, message: 'Authentication error' }],
+				},
 			});
-			mockVerify.mockRejectedValueOnce(apiError);
+			expect(JSON.stringify(errorSpy.mock.calls[0][0])).not.toContain('validtoken');
+			errorSpy.mockRestore();
+		});
+
+		it('logs Cloudflare API status and errors on unexpected SDK failures', async () => {
+			const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+			const apiError = Object.assign(new Error('500 Internal error'), {
+				name: 'InternalServerError',
+				status: 500,
+				errors: [{ code: 10001, message: 'Internal error' }],
+			});
+			mockListZones.mockResolvedValueOnce({ result: [{ id: 'zone-id', name: 'example.com' }] });
+			mockListRecords.mockRejectedValueOnce(apiError);
 
 			const response = await worker.fetch(
 				new Request('http://example.com/update?ip=192.0.2.1&hostname=home.example.com', { headers: auth }),
@@ -386,9 +397,9 @@ describe('UniFi DDNS Worker', () => {
 			expect(errorSpy.mock.calls[0][0]).toMatchObject({
 				responseStatus: 500,
 				error: {
-					name: 'PermissionDeniedError',
-					apiStatus: 403,
-					apiErrors: [{ code: 10000, message: 'Authentication error' }],
+					name: 'InternalServerError',
+					apiStatus: 500,
+					apiErrors: [{ code: 10001, message: 'Internal error' }],
 				},
 			});
 			errorSpy.mockRestore();

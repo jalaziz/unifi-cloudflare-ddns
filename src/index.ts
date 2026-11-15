@@ -7,6 +7,8 @@ class HttpError extends Error {
 	constructor(
 		public statusCode: number,
 		message: string,
+		/** Underlying error (e.g. a Cloudflare API error), included in failure logs. */
+		public readonly underlying?: unknown,
 	) {
 		super(message);
 		this.name = 'HttpError';
@@ -27,8 +29,9 @@ function constructClientOptions(request: Request): ClientOptions {
 		throw new HttpError(401, 'Invalid API key or token.');
 	}
 
+	// The username is ignored: with an API Token the SDK authenticates via
+	// `Authorization: Bearer` only, for both User and Account tokens.
 	return {
-		apiEmail: decoded.substring(0, index),
 		apiToken: decoded.substring(index + 1),
 	};
 }
@@ -112,14 +115,18 @@ function findZone(zones: Zone[], hostname: string): Zone {
 async function update(clientOptions: ClientOptions, newRecords: AddressableRecord[]): Promise<Response> {
 	const cloudflare = new Cloudflare(clientOptions);
 
-	const tokenStatus = (await cloudflare.user.tokens.verify()).status;
-	if (tokenStatus !== 'active') {
-		throw new HttpError(401, 'This API Token is ' + tokenStatus);
-	}
-
+	// Listing zones doubles as token validation. It works for both User and
+	// Account API Tokens, unlike /user/tokens/verify which only accepts User tokens.
 	const zones: Zone[] = [];
-	for await (const zone of cloudflare.zones.list({ per_page: 50 })) {
-		zones.push(zone);
+	try {
+		for await (const zone of cloudflare.zones.list({ per_page: 50 })) {
+			zones.push(zone);
+		}
+	} catch (error) {
+		if (isCloudflareApiError(error) && (error.status === 400 || error.status === 401 || error.status === 403)) {
+			throw new HttpError(401, 'The API Token is invalid, expired, or lacks Zone:Read permission.', error);
+		}
+		throw error;
 	}
 	if (zones.length === 0) {
 		throw new HttpError(400, 'No zones found! The API Token must have access to at least one zone.');
@@ -220,19 +227,28 @@ function logFailure(request: Request, responseStatus: number, error: unknown): v
 
 	if (error instanceof HttpError) {
 		entry.error = { name: error.name, message: error.message };
-	} else if (isCloudflareApiError(error)) {
-		entry.error = {
+		if (error.underlying !== undefined) {
+			entry.cause = describeError(error.underlying);
+		}
+	} else {
+		entry.error = describeError(error);
+	}
+
+	console.error(entry);
+}
+
+function describeError(error: unknown): Record<string, unknown> {
+	if (isCloudflareApiError(error)) {
+		return {
 			name: error.name,
 			message: error.message,
 			apiStatus: error.status,
 			apiErrors: error.errors,
 			stack: error.stack,
 		};
-	} else if (error instanceof Error) {
-		entry.error = { name: error.name, message: error.message, stack: error.stack };
-	} else {
-		entry.error = { message: String(error) };
 	}
-
-	console.error(entry);
+	if (error instanceof Error) {
+		return { name: error.name, message: error.message, stack: error.stack };
+	}
+	return { message: String(error) };
 }

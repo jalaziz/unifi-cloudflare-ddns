@@ -37,8 +37,10 @@ UniFi devices running older firmware do not natively support Cloudflare as a DDN
 ### 2. **Generate a Cloudflare API Token**
 
 1. Go to the [Cloudflare Dashboard](https://dash.cloudflare.com/).
-2. Navigate to **Profile > API Tokens**
-3. Create a token using the **Edit zone DNS** template.
+2. Create either kind of token:
+   - **Account API Token** (recommended; not tied to a user): **Manage Account > Account API Tokens**
+   - **User API Token**: **Profile > API Tokens**
+3. Use the **Edit zone DNS** template (Zone — Zone: Read, Zone — DNS: Edit).
 4. Scope the token to the zone(s) containing your hostnames. One token can cover multiple domains.
 5. Save the token securely.
 
@@ -49,8 +51,8 @@ UniFi devices running older firmware do not natively support Cloudflare as a DDN
 3. Create New Dynamic DNS with the following information:
    - **Service:** `custom`
    - **Hostname:** `subdomain.example.com` or `example.com`
-   - **Username:** Cloudflare Account Email Address (e.g., `you@example.com`)
-   - **Password:** Cloudflare User API Token *(not an Account API Token)*
+   - **Username:** Any non-empty value, e.g. your Cloudflare email *(not used by the worker)*
+   - **Password:** Cloudflare API Token (Account or User)
    - **Server:** `<worker-name>.<worker-subdomain>.workers.dev/update?ip=%i&hostname=%h`
      *(Omit `https://`)*
 
