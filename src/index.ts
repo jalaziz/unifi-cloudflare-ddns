@@ -1,5 +1,6 @@
 import { ClientOptions, Cloudflare } from 'cloudflare';
 import type { AAAARecord, ARecord } from 'cloudflare/resources/dns/records';
+import type { Zone } from 'cloudflare/resources/zones/zones';
 type AddressableRecord = AAAARecord | ARecord;
 
 class HttpError extends Error {
@@ -83,6 +84,31 @@ function constructDNSRecords(request: Request): AddressableRecord[] {
 	return records;
 }
 
+/**
+ * Pick the zone a hostname belongs to. A token scoped to a single zone always
+ * uses that zone; otherwise the zone with the longest matching suffix wins
+ * (so `a.sub.example.com` prefers a `sub.example.com` zone over `example.com`).
+ */
+function findZone(zones: Zone[], hostname: string): Zone {
+	if (zones.length === 1) {
+		return zones[0];
+	}
+
+	const host = hostname.toLowerCase().replace(/\.$/, '');
+	let match: Zone | undefined;
+	for (const zone of zones) {
+		const name = zone.name.toLowerCase();
+		if ((host === name || host.endsWith('.' + name)) && (!match || name.length > match.name.length)) {
+			match = zone;
+		}
+	}
+
+	if (!match) {
+		throw new HttpError(400, `No zone found for hostname "${hostname}". Make sure the API Token has access to its zone.`);
+	}
+	return match;
+}
+
 async function update(clientOptions: ClientOptions, newRecords: AddressableRecord[]): Promise<Response> {
 	const cloudflare = new Cloudflare(clientOptions);
 
@@ -91,16 +117,16 @@ async function update(clientOptions: ClientOptions, newRecords: AddressableRecor
 		throw new HttpError(401, 'This API Token is ' + tokenStatus);
 	}
 
-	const zones = (await cloudflare.zones.list()).result;
-	if (zones.length > 1) {
-		throw new HttpError(400, 'More than one zone was found! You must supply an API Token scoped to a single zone.');
-	} else if (zones.length === 0) {
-		throw new HttpError(400, 'No zones found! You must supply an API Token scoped to a single zone.');
+	const zones: Zone[] = [];
+	for await (const zone of cloudflare.zones.list({ per_page: 50 })) {
+		zones.push(zone);
+	}
+	if (zones.length === 0) {
+		throw new HttpError(400, 'No zones found! The API Token must have access to at least one zone.');
 	}
 
-	const zone = zones[0];
-
 	for (const newRecord of newRecords) {
+		const zone = findZone(zones, newRecord.name);
 		const records = (
 			await cloudflare.dns.records.list({
 				zone_id: zone.id,

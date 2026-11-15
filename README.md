@@ -39,7 +39,7 @@ UniFi devices running older firmware do not natively support Cloudflare as a DDN
 1. Go to the [Cloudflare Dashboard](https://dash.cloudflare.com/).
 2. Navigate to **Profile > API Tokens**
 3. Create a token using the **Edit zone DNS** template.
-4. Scope the token to **one** specific zone.
+4. Scope the token to the zone(s) containing your hostnames. One token can cover multiple domains.
 5. Save the token securely.
 
 ### 3. **Configure UniFi OS**

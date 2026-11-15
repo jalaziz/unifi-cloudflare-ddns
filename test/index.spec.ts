@@ -17,7 +17,16 @@ vi.mock('cloudflare', () => {
 					},
 				},
 				zones: {
-					list: mockListZones,
+					// The SDK returns a PagePromise: awaitable for one page, async-iterable across all pages.
+					list: (...args: unknown[]) => {
+						const page = Promise.resolve(mockListZones(...args));
+						return {
+							then: page.then.bind(page),
+							async *[Symbol.asyncIterator]() {
+								yield* (await page).result;
+							},
+						};
+					},
 				},
 				dns: {
 					records: {
@@ -168,18 +177,54 @@ describe('UniFi DDNS Worker', () => {
 		expect(mockUpdateRecord).toHaveBeenCalledTimes(4);
 	});
 
-	it('responds with 400 when multiple zones are found', async () => {
+	it('routes each hostname to its matching zone when the token covers multiple zones', async () => {
 		mockVerify.mockResolvedValueOnce({ status: 'active' });
-		mockListZones.mockResolvedValueOnce({ result: [{ id: 'zone-id1' }, { id: 'zone-id2' }] });
+		mockListZones.mockResolvedValueOnce({
+			result: [
+				{ id: 'zone-example', name: 'example.com' },
+				{ id: 'zone-sub', name: 'sub.example.com' },
+				{ id: 'zone-other', name: 'other.net' },
+			],
+		});
+		mockListRecords.mockResolvedValue({ result: [{ id: 'record-id', proxied: false }] });
 
-		const response = await worker.fetch(new Request('http://example.com/update?ip=192.0.2.1&hostname=home.example.com', {
-			headers: {
-				Authorization: 'Basic ' + btoa('email@example.com:validtoken'),
-			},
-		}));
+		const response = await worker.fetch(
+			new Request('http://example.com/update?ip=192.0.2.1&hostname=home.example.com,a.sub.example.com,Other.NET', {
+				headers: {
+					Authorization: 'Basic ' + btoa('email@example.com:validtoken'),
+				},
+			}),
+		);
+
+		expect(response.status).toBe(200);
+		expect(mockListRecords.mock.calls.map(([params]) => [params.name, params.zone_id])).toEqual([
+			['home.example.com', 'zone-example'],
+			['a.sub.example.com', 'zone-sub'],
+			['Other.NET', 'zone-other'],
+		]);
+		expect(mockUpdateRecord.mock.calls.map(([, params]) => params.zone_id)).toEqual(['zone-example', 'zone-sub', 'zone-other']);
+	});
+
+	it('responds with 400 when no accessible zone matches the hostname', async () => {
+		mockVerify.mockResolvedValueOnce({ status: 'active' });
+		mockListZones.mockResolvedValueOnce({
+			result: [
+				{ id: 'zone-example', name: 'example.com' },
+				{ id: 'zone-other', name: 'other.net' },
+			],
+		});
+
+		const response = await worker.fetch(
+			new Request('http://example.com/update?ip=192.0.2.1&hostname=home.notexample.com', {
+				headers: {
+					Authorization: 'Basic ' + btoa('email@example.com:validtoken'),
+				},
+			}),
+		);
 
 		expect(response.status).toBe(400);
-		expect(await response.text()).toBe('More than one zone was found! You must supply an API Token scoped to a single zone.');
+		expect(await response.text()).toBe('No zone found for hostname "home.notexample.com". Make sure the API Token has access to its zone.');
+		expect(mockUpdateRecord).not.toHaveBeenCalled();
 	});
 
 	it('responds with 400 when no zones are found', async () => {
@@ -193,7 +238,7 @@ describe('UniFi DDNS Worker', () => {
 		}));
 
 		expect(response.status).toBe(400);
-		expect(await response.text()).toBe('No zones found! You must supply an API Token scoped to a single zone.');
+		expect(await response.text()).toBe('No zones found! The API Token must have access to at least one zone.');
 	});
 
 	it('responds with 400 when multiple records are found', async () => {
@@ -317,7 +362,7 @@ describe('UniFi DDNS Worker', () => {
 				responseStatus: 400,
 				hostname: 'home.example.com',
 				ip: '192.0.2.1',
-				error: { name: 'HttpError', message: 'No zones found! You must supply an API Token scoped to a single zone.' },
+				error: { name: 'HttpError', message: 'No zones found! The API Token must have access to at least one zone.' },
 			});
 			expect(JSON.stringify(entry)).not.toContain('validtoken');
 			errorSpy.mockRestore();

@@ -97,7 +97,7 @@ You need **two** API tokens with different scopes:
 - Zone — Zone: Read
 - Zone — DNS: Edit
 
-The DDNS update token **must** be scoped to only one specific zone (domain). If the token has access to multiple zones, the worker will return an error. This is a User API Token, not an Account API Token.
+The DDNS update token can be scoped to one or more zones (domains). When it covers several zones, the worker picks the zone whose name is the longest suffix of each hostname (e.g. `home.example.com` → `example.com`). Scope the token to only the zones you need. This is a User API Token, not an Account API Token.
 
 ## 9. How frequently does the UniFi device update the DDNS record?
 
@@ -140,7 +140,8 @@ The Click to Deploy button may fail if your Cloudflare Pages build settings are 
 
 Common error messages and their meanings:
 - **"API token missing"** — The Authorization header is not being sent. Check your UniFi DDNS username/password configuration.
-- **"No zones found"** or **"More than one zone"** — Your API token is not scoped to exactly one zone. Create a new token with the correct scope.
+- **"No zones found"** — Your API token has no zone access. Create a new token scoped to the zone(s) you want to update.
+- **"No zone found for hostname"** — The token covers several zones, but none of them contains that hostname. Add the hostname's zone to the token.
 - **"No record found"** — The DNS record must already exist in Cloudflare before the worker can update it. Manually create an A or AAAA record first.
 
 ## 14. What should I do if I continue to experience issues with DDNS updates?
