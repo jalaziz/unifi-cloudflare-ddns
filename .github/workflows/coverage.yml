@@ -16,20 +16,27 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: 'Install Node'
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: lts/*
+          cache: npm
 
       - name: 'Install Dependencies'
         run: npm ci
 
+      # Also generates worker-configuration.d.ts via `wrangler types`.
       - name: 'Typecheck'
         run: npm run typecheck
 
       - name: 'Code Coverage'
         run: npx vitest run --coverage
 
+      - name: 'Build'
+        run: npx wrangler deploy --dry-run
+
       - name: 'Report Coverage'
         if: always()
-        uses: davelosert/vitest-coverage-report-action@02f3c2e641286b7fa308cd3e430783103ce6103b # v2
+        uses: davelosert/vitest-coverage-report-action@74c2d9210b4fc44c84d8213f61d7ec99837b7aa0 # v2.13.2

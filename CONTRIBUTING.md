@@ -15,7 +15,7 @@ If you're new, we encourage you to take a look at issues that have been previous
 2. Fork the repo and create your branch from `main`.
 3. If you've added code that should be tested, add tests to `test/index.spec.ts`.
 4. Update the `README.md` and/or `docs/faq.md` where appropriate.
-5. Ensure your test passes locally.
+5. Ensure `npm test` and `npm run typecheck` pass locally (`typecheck` also generates the gitignored `worker-configuration.d.ts`; run `npm run cf-typegen` to refresh editor types after changing `wrangler.jsonc`).
 6. Address any feedback in code review promptly.
 
 ## Issues
