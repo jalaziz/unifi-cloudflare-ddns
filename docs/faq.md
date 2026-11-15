@@ -7,11 +7,11 @@ This FAQ addresses common issues and solutions for configuring UniFi devices to 
 The server configuration depends on your UniFi device model:
 
 - **Older Gateways (e.g., USG, USG Pro):**
-  - **Server:** `unifi-cloudflare-ddns.<your_worker_subdomain>.workers.dev`
+  - **Server:** `ddns.<your_worker_subdomain>.workers.dev`
   - **Note:** Do **not** include the path with variables.
 
 - **Newer Gateways (e.g., UDM series, UXG series):**
-  - **Server:** `unifi-cloudflare-ddns.<your_worker_subdomain>.workers.dev/update?ip=%i&hostname=%h`
+  - **Server:** `ddns.<your_worker_subdomain>.workers.dev/update?ip=%i&hostname=%h`
   - **Note:** Include the full path with variables.
 
 This distinction is crucial to ensure the DDNS updates function correctly.

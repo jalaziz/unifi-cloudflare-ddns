@@ -19,7 +19,7 @@ UniFi devices running older firmware do not natively support Cloudflare as a DDN
 #### **Option 1: Workers Builds (deploy from Git)**
 1. Fork this repository.
 2. In the Cloudflare Dashboard, go to **Workers & Pages > Create > Import a repository** and select your fork.
-3. Keep the Worker name equal to `name` in `wrangler.jsonc` (`unifi-cloudflare-ddns`).
+3. Keep the Worker name equal to `name` in `wrangler.jsonc` (`ddns`).
 4. Leave the build command empty; the deploy command defaults to `npx wrangler deploy`.
 5. Every push to `main` now deploys automatically. Note the `*.workers.dev` route.
 
