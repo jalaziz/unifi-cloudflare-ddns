@@ -3,10 +3,36 @@ updates:
   - package-ecosystem: "npm"
     directory: "/"
     schedule:
-      interval: "daily"
-    open-pull-requests-limit: 0
+      interval: "weekly"
+    # Wait for new releases to age before proposing them, so compromised or
+    # yanked versions are likely caught first. Does not delay security updates.
+    cooldown:
+      default-days: 7
     groups:
+      # Security fixes in a single PR, raised as soon as advisories land.
+      # Auto-merged when every bump is minor/patch and CI passes.
       security:
         applies-to: security-updates
+        patterns:
+          - "*"
+      # Routine minor/patch bumps in a single weekly PR; auto-merged when CI passes.
+      # Major bumps are left ungrouped so each gets its own PR for manual review.
+      minor-patch:
+        applies-to: version-updates
+        update-types:
+          - "minor"
+          - "patch"
+        patterns:
+          - "*"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    # Not auto-merged: workflow changes can alter CI permissions.
+    groups:
+      actions:
         patterns:
           - "*"

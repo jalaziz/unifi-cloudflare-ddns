@@ -1,9 +1,8 @@
 # 🌩️ Cloudflare DDNS for UniFi OS
 
-[![CodeQL](https://github.com/willswire/unifi-ddns/actions/workflows/github-code-scanning/codeql/badge.svg)](https://github.com/willswire/unifi-ddns/actions/workflows/github-code-scanning/codeql)
-[![Code Coverage](https://github.com/willswire/unifi-ddns/actions/workflows/coverage.yml/badge.svg)](https://github.com/willswire/unifi-ddns/actions/workflows/coverage.yml)
-[![Dependabot Updates](https://github.com/willswire/unifi-ddns/actions/workflows/dependabot/dependabot-updates/badge.svg)](https://github.com/willswire/unifi-ddns/actions/workflows/dependabot/dependabot-updates)
-[![Deploy](https://github.com/willswire/unifi-ddns/actions/workflows/deploy.yml/badge.svg)](https://github.com/willswire/unifi-ddns/actions/workflows/deploy.yml)
+[![Code Coverage](https://github.com/jalaziz/unifi-cloudflare-ddns/actions/workflows/coverage.yml/badge.svg)](https://github.com/jalaziz/unifi-cloudflare-ddns/actions/workflows/coverage.yml)
+
+Fork of [willswire/unifi-ddns](https://github.com/willswire/unifi-ddns).
 
 A Cloudflare Worker script that enables UniFi devices (e.g., UDM-Pro, USG) to dynamically update DNS A/AAAA records on Cloudflare.
 
@@ -17,12 +16,12 @@ UniFi devices running older firmware do not natively support Cloudflare as a DDN
 
 ### 1. **Deploy the Cloudflare Worker**
 
-#### **Option 1: Click to Deploy**
-[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/willswire/unifi-ddns)
-
-1. Click the button above.
-2. Complete the deployment.
-3. Note the `*.workers.dev` route.
+#### **Option 1: Workers Builds (deploy from Git)**
+1. Fork this repository.
+2. In the Cloudflare Dashboard, go to **Workers & Pages > Create > Import a repository** and select your fork.
+3. Keep the Worker name equal to `name` in `wrangler.jsonc` (`unifi-cloudflare-ddns`).
+4. Leave the build command empty; the deploy command defaults to `npx wrangler deploy`.
+5. Every push to `main` now deploys automatically. Note the `*.workers.dev` route.
 
 #### **Option 2: Deploy with Wrangler CLI**
 1. Clone this repository.
